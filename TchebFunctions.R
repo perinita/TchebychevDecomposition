@@ -3,9 +3,10 @@
 library(ggplot2)
 library(plotly)
 
-#Plot
+#Triangular Outline used for plots
 outlinedf <- data.frame(startx=c(0,0,1),starty=c(0,1,0),endx=c(0,1,0),endy=c(1,0,0))
 
+#Given any nondominated frontier (NDF), shift images to positive orthant (Assumption 1) and append dummy images (Assumption 4)
 InitializeNDF <- function(NDF) {
   NDF <- NDF[,c("id","y1","y2","y3")]
   utopia <- sapply(NDF[,c("y1","y2","y3")],min)-1
@@ -28,6 +29,7 @@ InitializeNDF <- function(NDF) {
   return(NDF)
 }
 
+#data structure for local nadir points (LNPs)
 InitializeLNP <- function(NDF) {
   LNP <- data.frame(y1=NDF$y1[NDF$id==-1],
                     y2=NDF$y2[NDF$id==-2],
@@ -40,6 +42,7 @@ InitializeLNP <- function(NDF) {
   return(LNP)  
 }
 
+#Compute a k-way LNP
 ComputeKway <- function(LNP) {
   LNP$Kway <- 0
   for(n in 1:dim(LNP)[1]) {
@@ -48,6 +51,7 @@ ComputeKway <- function(LNP) {
   return(LNP)
 }
 
+#Update function from Klamroth (2015) given data frames for LNPs, NDF, and new image y(row)
 KlamrothUpdate <- function(LNP, NDF, yrow) {
   A <- which(yrow$y1<LNP$y1 & yrow$y2<LNP$y2 & yrow$y3<LNP$y3)
   P <- LNP[1,]
@@ -87,6 +91,7 @@ KlamrothUpdate <- function(LNP, NDF, yrow) {
   return(LNP)
 }
 
+#Extended method from Klamroth (2015) which guarantees complete contributing sets (Algorithm 2 in manuscript)
 KlamrothUpdateMaximal <- function(LNP, NDF, yrow) {
   A <- which(yrow$y1<LNP$y1 & yrow$y2<LNP$y2 & yrow$y3<LNP$y3)
   P <- LNP[1,]
@@ -136,6 +141,10 @@ KlamrothUpdateMaximal <- function(LNP, NDF, yrow) {
   return(LNP)
 }
 
+#Simulate a box-based criterion-space-search ("primal") algorithm (Algorithm 1 in manuscript)
+#  Note that no optimization programs are solved. The NDF is presumed to be known entirely, in advance
+#  and every iteration of the simulated algorithm returns a nondominated image in the box
+#policies (1-5) for choosing LNP (or box) coincide with those described in the manuscript
 SimulatedPrimal <- function(baseNDF,policy) {
   NDF <- InitializeNDF(baseNDF)
   NDF$StepFound = 0
@@ -191,7 +200,7 @@ SimulatedPrimal <- function(baseNDF,policy) {
     }
     
     
-    #solve IP
+    #simulate solving an IP (i.e., return an undiscovered ND image)
     inds = which(NDF$y1<LNP$y1[test] & NDF$y2<LNP$y2[test] & NDF$y3<LNP$y3[test])
     IPsolved=IPsolved+1
     if(length(inds)==0) { #LNP is weakly ND
@@ -221,8 +230,9 @@ SimulatedPrimal <- function(baseNDF,policy) {
   return(list(LNPlist,NDF,dataout))
 }
 
+#Subset the LNP data frame for only LNPs to which image im contributes
 subsetLNP <- function(LNP,im) {
-  if(dim(LNP)[1]==0) return(LNP)
+  if(dim(LNP)[1]==0) return(LNP) #empty data frame
   LNPsubset <- LNP[1,]
   for(i in 1:dim(LNP)[1]) {
     if(im%in%LNP$C1[[i]] || im%in%LNP$C2[[i]] || im%in%LNP$C3[[i]]) {
@@ -232,6 +242,7 @@ subsetLNP <- function(LNP,im) {
   LNPsubset<-LNPsubset[-1,]
   return(LNPsubset)
 }
+#Compute kernel weight 
 kernelWeight <- function(im) {
   dif<-1/(im)
   dif[which(dif==Inf)] <- 0
@@ -239,10 +250,12 @@ kernelWeight <- function(im) {
   kw <- as.numeric(c(dif[1]/sumdif, dif[2]/sumdif, dif[3]/sumdif))
   return(kw)
 }
+#Distance between points in weight space (R2)
 pointDistance <- function(p1,p2) {
   dist <- sqrt((p1[1]-p2[1])^2 + (p1[2]-p2[2])^2)
   return(as.numeric(dist))
 }
+#Compute area of triangle by Heron's formula
 triangleArea <- function(p1,p2,p3) {
   a<-pointDistance(p1,p2)
   b<-pointDistance(p1,p3)
@@ -251,6 +264,7 @@ triangleArea <- function(p1,p2,p3) {
   s<-0.5*(a+b+c)
   return(sqrt(max(0,s*(s-a)*(s-b)*(s-c))))
 }
+#Transform point (in Cartesian form (x,y)) into polar form (radius,angle) relative to center, also as (x,y)
 polarTransform <- function(center,point) {
   radius=pointDistance(center,point)
   if(radius==0) angle=0
@@ -265,6 +279,7 @@ polarTransform <- function(center,point) {
   }
   return(c(radius,angle))
 }
+#Compute a local nadir point with respect to a list of identifers (ids)
 computeLNP <- function(NDF,ids) {
   new <- data.frame(y1=max(NDF$y1[NDF$id%in%ids]),
                     y2=max(NDF$y2[NDF$id%in%ids]),
@@ -280,6 +295,7 @@ computeLNP <- function(NDF,ids) {
   new$StepConfirmed <- 0
   return(new)
 }
+#Recursive function to check whether... ??
 recursiveLNPcheck <- function(NDF,LNP,maxlambda) {
   kw1=kernelWeight(LNP[1,c("y1","y2","y3")])
   if(max(kw1)<=maxlambda) return(TRUE)
@@ -314,14 +330,14 @@ minTchebAugmented <- function(NDF,lambda) {
   inds=which.min(NDF$weightedT)
   return(NDF$id[inds[1]])
 }
-
+#Boolean to determine whether a 'new' triangle (newtri) is unique with respect to data frame (tridf)
 TriangleUnique <- function(tridf,newtri) {
   inds1=tridf$tri[which(tridf$lambda1==newtri$lambda1[1] && tridf$lambda2==newtri$lambda2[1])]
   inds2=tridf$tri[which(tridf$lambda1==newtri$lambda1[2] && tridf$lambda2==newtri$lambda2[2])]
   inds3=tridf$tri[which(tridf$lambda1==newtri$lambda1[3] && tridf$lambda2==newtri$lambda2[3])]
   return(length(intersect(intersect(inds1,inds2),inds3))==0)
 }
-
+#Boolean function to determine whether a new LNP is unique with respect to a data frame of LNPs
 uniqueC <- function(LNP,newlnp) {
   sub=subset(LNP,Kway==newlnp$Kway & y1==newlnp$y1 & y2==newlnp$y2 & y3==newlnp$y3)
   if(dim(sub)[1]==0) return(TRUE)
@@ -332,7 +348,7 @@ uniqueC <- function(LNP,newlnp) {
   }
   return(TRUE)
 }
-
+#Recursive function to determine all the implied LNPs (Algorithm 3 in manuscript)
 ImpliedLNPs <- function(LNP,NDF,im) {
   n=1
   outList=LNP
@@ -365,7 +381,7 @@ ImpliedLNPs <- function(LNP,NDF,im) {
   }
   return(outList)
 }
-
+#Remove dominating images from imgs, i.e., if ..., then remove img
 removeDominating <- function(imgs,ys) {
   i=1
   while(i<=dim(imgs)[1]) {
@@ -437,7 +453,7 @@ CompromisePrimal <- function(baseNDF,maxlambda,initLambda) {
   dataout = data.frame(IPsolved=IPsolved,Skipped=Skipped)
   return(list(LNPlist,NDF,dataout))
 }
-
+#Compute the perimeter by dimensional subsets (Algorithm 4 in manuscript)
 ComponentPerimeterByC <- function(LNP,NDF,im) {
   y<-as.numeric(NDF[NDF$id==im,c("y1","y2","y3")])
   sub<-subsetLNP(LNP,im) #subset of maximal LNPs
@@ -491,7 +507,7 @@ ComponentInnerApproxByC <- function(LNP,NDF,im) {
   p<-list(sub1,sub2,sub3)
   return(p)
 }
-
+#Wrapper function to compute all perimeters, sequentially
 ComputeAllPerimeters <- function(NDF,LNP) {
   ids <- NDF$id
   ids <- ids[ids>0]
@@ -756,7 +772,3 @@ representationMetrics <- function(NDF) {
   }
   return(metrics)
 }
-
-
-
-

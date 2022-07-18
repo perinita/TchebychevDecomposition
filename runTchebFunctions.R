@@ -4,36 +4,33 @@ setwd("~/Documents/MathCareer/Stephan Helfrich/")
 source("TchebFunctions.R")
 
 ##START: Read in data 
-fname <- "RunningEx-NDF" #running example
+fname <- "RunningEx-NDF" #running example or
 fname <- "m25.1-NDF" #other example instances: m25.1, m25.2, m25.3, m25.4, m25.5 
 baseNDF <- read.csv(paste0("Instances/",fname,".txt"),header=TRUE,sep=",")
 
 ### PRIMARY PLOTTING TOOLS
 
-##Run Algorithm 2 Box-Based Algorithm for NDF instance
-policy=1
-outlist <- SimulatedPrimal(baseNDF,policy)
-LNPlist = outlist[[1]]
-NDF = outlist[[2]]
-outlist[[3]]
+## Run Box-Based Criteria-Space Search Algorithm for NDF instance
+policy=1                                   #policy 1 recommended for simplicity, but replace for exploration
+outlist <- SimulatedPrimal(baseNDF,policy) #outlist is a list of output containing:
+LNPlist = outlist[[1]]                     #list of data frames containing local nadir points (LNPs) per iteration
+NDF = outlist[[2]]                         #data frame for nondominated frontier (NDF) including which iteration it was found
+outlist[[3]]                               #simply prints the number of simulated integer programs (IPs) which would have been solved
 
 ## Plot final decomposition using Algorithm 1
-s = length(LNPlist) #use final step or manually choose step
-LNP <- LNPlist[[s]] #length(LNPlist)
-#Compute kernel weights per image and LNP
-NDF[,c("w1","w2","w3")] <- t(apply(NDF[,c("y1","y2","y3")], 1, kernelWeight))
-LNP[,c("w1","w2","w3")] <- t(apply(LNP[,c("y1","y2","y3")], 1, kernelWeight))
-
-subNDF <- subset(NDF,StepFound<=s)
-#Compute perimeter sets and triangulate
-perimset <- ComputeAllPerimeters(subNDF,LNP)
-trilist <- TriangulatePerimeterSet(subNDF,perimset)
-triangledf <- trilist[[1]]
-areadf <- trilist[[2]]
-linesegdf <- trilist[[3]]
+s = length(LNPlist) #recommended to use final step; use subsequent section for choosing an intermediate step
+LNP <- LNPlist[[s]] 
+NDF[,c("w1","w2","w3")] <- t(apply(NDF[,c("y1","y2","y3")], 1, kernelWeight)) #compute kernel weight per image 
+LNP[,c("w1","w2","w3")] <- t(apply(LNP[,c("y1","y2","y3")], 1, kernelWeight)) #compute kernel weight per lnp 
+subNDF <- subset(NDF,StepFound<=s)                  #only include images found by step s
+perimset <- ComputeAllPerimeters(subNDF,LNP)        #compute perimeter sets 
+trilist <- TriangulatePerimeterSet(subNDF,perimset) #triangulate -> list of data frames containing 
+triangledf <- trilist[[1]]                          #data frame for individual triangles
+areadf <- trilist[[2]]                              #data frame for area per triangle
+linesegdf <- trilist[[3]]                           #data frame for line segments of the perimeters
 
 # 3 plotting options:
-# Complete Plot without labels
+# (a) Complete Plot without labels
 g1 <- ggplot() +
   geom_polygon(data=triangledf, aes(x=lambda1,y=lambda2,fill=image,group=tri),alpha=0.5) +
   geom_segment(data = outlinedf, aes(x=startx,y=starty,xend=endx,yend=endy),color="black",size=1)+
@@ -51,7 +48,7 @@ g1 <- ggplot() +
         plot.title = element_text(hjust = 0.5))
 g1
 
-#Complete plot with labels
+# (b) Complete plot with labels
 g2<-g1+geom_point(data=subset(subNDF,id>0), 
                   aes(x=w1, y=w2), colour="black",size=4.5,shape = 21,fill="white") + #size=3
   geom_text(data=subset(subNDF,id>0), 
@@ -59,7 +56,7 @@ g2<-g1+geom_point(data=subset(subNDF,id>0),
 
 g2
 
-#Interactive plotly
+# (c) Interactive using plotly
 g3 <- ggplot() +
   geom_polygon(data=triangledf,
                aes(x=lambda1,y=lambda2,fill=image,group=tri,
@@ -82,27 +79,29 @@ g3 <- ggplot() +
         legend.title = element_text(size=10),legend.text = element_text(size=8),
         axis.title=element_text(size=10,face="bold"),axis.text=element_text(size=10),
         plot.title = element_text(hjust = 0.5))
-g3
+
 ggplotly(g3,tooltip = 'text')
 
 ### PLOTTING APPROXIMATIONS
 
-#Plot Inner/Outer Approximations at a step
-s = 160
-LNP <- LNPlist[[s]] #length(LNPlist)
-#Compute kernel weights per image and LNP
-NDF[,c("w1","w2","w3")] <- t(apply(NDF[,c("y1","y2","y3")], 1, kernelWeight))
-LNP[,c("w1","w2","w3")] <- t(apply(LNP[,c("y1","y2","y3")], 1, kernelWeight))
-subNDF <- subset(NDF,StepFound<=s)
+# Plot Inner or Outer Approximations at a single intermediate step
+s = 10 #choose an intermediate step in order to evaluate an any-time approximation
+LNP <- LNPlist[[s]] 
+NDF[,c("w1","w2","w3")] <- t(apply(NDF[,c("y1","y2","y3")], 1, kernelWeight)) #compute kernel weights per image
+LNP[,c("w1","w2","w3")] <- t(apply(LNP[,c("y1","y2","y3")], 1, kernelWeight)) #compute kernel weights per lnp
+subNDF <- subset(NDF,StepFound<=s)                  #only include images found by step s
 
 outer <- SingleStepOuterApprox(subNDF,LNP,s)
 outertriangledf <- outer[[1]]
 inner <- SingleStepInnerApprox(subNDF,LNP,s)
 innertriangledf <- inner[[1]]
+#toggle comments below depending on which approximation is of interest
 g4 <- ggplot() +
+  # for outer:
   ggtitle(paste("Step",s,"Outer Approximation")) +
   geom_polygon(data=outertriangledf, 
                aes(x=lambda1,y=lambda2,fill=image,group=tri),alpha=0.5) + #0.3
+  # for inner: 
   #ggtitle(paste("Step",s,"Inner Approximation")) +
   #geom_polygon(data=innertriangledf, 
   #             aes(x=lambda1,y=lambda2,fill=image,group=tri),alpha=0.5,color="black") +
@@ -118,11 +117,12 @@ g4 <- ggplot() +
 
 g4
 
-#Plot Inner/Outer Approximations over run time
-Approx <- SummarizeInnerOuterApprox(NDF,LNPlist)
+# Plot Inner or Outer Approximations over run time
+Approx <- SummarizeInnerOuterApprox(NDF,LNPlist) #takes some time to run
 InnerApprox <- Approx[[1]]
 OuterApprox <- Approx[[2]]
 AllApprox <- Approx[[3]]
+# optional aesthetics commented out below
 g5 <- ggplot() +
   geom_line(data=OuterApprox, aes(x=Step, y=TotalArea, group=image, color=image),linetype="dashed") +
   #geom_point(data=OuterApprox, aes(x=Step, y=TotalArea, color=image)) +
@@ -328,57 +328,4 @@ g3<-g2+geom_polygon(data=initLambda, aes(x=w1,y=w2),fill=NA,color="black") +
             aes(x=w1, y=w2, label = id), size=2.4)  #size=2
 
 g3
-
-# Plot parts
-# g4 <- ggplot() +
-#   geom_polygon(data=triangledf, aes(x=lambda1,y=lambda2,fill=image,group=tri),alpha=0.5) +
-#   geom_segment(data = outlinedf, aes(x=startx,y=starty,xend=endx,yend=endy),color="black",size=1)+
-#   geom_segment(data = linesegdf, aes(x=startx,y=starty,xend=endx,yend=endy),size=0.5,color="black") +
-#   geom_point(data=perimset, 
-#              aes(x=w1, y=w2), colour="gray",size=1) + #size=3
-#   geom_point(data=LNP, 
-#              aes(x=w1, y=w2), colour="black",size=1) + #size=3
-#   geom_point(data=subset(subNDF,id>0), 
-#              aes(x=w1, y=w2), colour="black",size=4.5,shape = 21,fill="white") + #size=3
-#   geom_text(data=subset(subNDF,id>0), 
-#             aes(x=w1, y=w2, label = id), size=2.4) +
-#   theme_bw() +
-#   scale_fill_gradientn(colours=rainbow(length(unique(triangledf$image))), #length(unique(triangledf$image))
-#                        limits=c(1,length(unique(triangledf$image))))+ #length(unique(triangledf$image))
-#   #ggtitle(fname) +
-#   #ggtitle("Instance m25.1") +
-#   xlab(expression(lambda[1])) +
-#   ylab(expression(lambda[2])) +
-#   theme(legend.position="none",#right or none
-#         legend.title = element_text(size=10),legend.text = element_text(size=8),
-#         axis.title=element_text(size=10,face="bold"),axis.text=element_text(size=10),
-#         plot.title = element_text(hjust = 0.5))
-# g4
-
-
-
-# #extra notation
-# plotdf=data.frame(x=c(0,0.375,0.6),y=c(0.6,0.375,0),lab=paste0("lambda^",1:3))
-# #plotdf=data.frame(x=c(0,0.5,0.666,1,0.666),y=c(0.5,0.25,0,0,0.333),lab=paste0("lambda^",1:5))
-# plotdf$xtext = c(0+0.04,0.375-0.03,0.6+0.03)
-# plotdf$ytext = c(0.6+0.05,0.375-0.05,0+0.05)
-# 
-# g3+geom_point(data=plotdf, aes(x=x, y=y)) +
-#   geom_text(data=plotdf, aes(x=xtext,y=ytext,label=lab),parse = TRUE,size=4)
-# 
-# #transparent
-# g4 <- ggplot() +
-#   geom_segment(data = outlinedf, aes(x=startx,y=starty,xend=endx,yend=endy),color="black",size=1)+
-#   geom_segment(data = linesegdf, aes(x=startx,y=starty,xend=endx,yend=endy),size=0.5,color="black") +
-#   theme(legend.position="none",#right or none
-#         axis.title=element_blank(),
-#         axis.text=element_blank(),
-#         panel.grid.major = element_blank(), 
-#         panel.grid.minor = element_blank(),
-#         panel.background = element_rect(fill = "transparent",colour = NA),
-#         plot.background = element_rect(fill = "transparent",colour = NA))
-# g4
-
-
-
 
